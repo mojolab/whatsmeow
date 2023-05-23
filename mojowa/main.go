@@ -42,7 +42,7 @@ import (
 
 var cli *whatsmeow.Client
 var log waLog.Logger
-
+var homedir = "./"
 var logLevel = "INFO"
 var debugLogs = flag.Bool("debug", false, "Enable debug logs?")
 var dbDialect = flag.String("db-dialect", "sqlite3", "Database dialect (sqlite3 or postgres)")
@@ -52,8 +52,15 @@ var pairRejectChan = make(chan bool, 1)
 
 func main() {
 	waBinary.IndentXML = true
+	
 	flag.Parse()
-
+	// Added homedir setting via command line args
+	if len(flag.Args()) > 0 {
+		homedir = flag.Arg(0)
+		dbAddress = proto.String(fmt.Sprintf("file:%s/mdtest.db?_foreign_keys=on",homedir))
+	}
+	
+	fmt.Printf("homedir: %s\n",homedir)
 	if *debugLogs {
 		logLevel = "DEBUG"
 	}
@@ -771,8 +778,32 @@ func handler(rawEvt interface{}) {
 		}
 
 		log.Infof("Received message %s from %s (%s): %+v", evt.Info.ID, evt.Info.SourceString(), strings.Join(metaParts, ", "), evt.Message)
+		//get a string representation of the message
+		conversation := ""
+		if evt.Message.Conversation != nil {
+			conversation = *evt.Message.Conversation
+		}
+
+		textstring := fmt.Sprintf("msg_id: %s | %s | (%s) | %v | %+v", evt.Info.ID, evt.Info.SourceString(), strings.Join(metaParts, ", "), conversation, evt.Message)
+		//write textstring to messages.log
+
+		fileName := fmt.Sprintf("%s/messages.log",homedir)
+		file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+		if err != nil {
+			log.Errorf("Failed to open file to write message: %v", err)
+			
+			return
+		}
+		defer file.Close()
+
+		if _, err := file.WriteString(textstring + "\n"); err != nil {
+			log.Errorf("Failed to write message to file: %v", err)
+			return
+		}
+		log.Infof("Wrote message to %s", fileName)
 		
-		/*fileName := fmt.Sprintf("message.log")
+        /*
+		fileName := fmt.Sprintf("messages.json")
 		file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 		if err != nil {
 			log.Errorf("Failed to open file to write log sync: %v", err)
@@ -780,14 +811,17 @@ func handler(rawEvt interface{}) {
 		}
 		enc := json.NewEncoder(file)
 		enc.SetIndent("", "  ")
-		err = enc.Encode(evt.Message)
+		
+		err = enc.Encode(evt)
+
+		//err = enc.Encode(evt.Message.Conversation)
 		if err != nil {
 			log.Errorf("Failed to write history sync: %v", err)
 			return
 		}
 		log.Infof("Wrote history sync to %s", fileName)
 		_ = file.Close()
-		*/	
+			*/
 		if evt.Message.GetPollUpdateMessage() != nil {
 			decrypted, err := cli.DecryptPollVote(evt)
 			if err != nil {
@@ -841,7 +875,7 @@ func handler(rawEvt interface{}) {
 		}
 	case *events.HistorySync:
 		id := atomic.AddInt32(&historySyncID, 1)
-		fileName := fmt.Sprintf("history-%d-%d.json", startupTime, id)
+		fileName := fmt.Sprintf("%s/history-%d-%d.json",homedir, startupTime, id)
 		file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE, 0600)
 		if err != nil {
 			log.Errorf("Failed to open file to write history sync: %v", err)

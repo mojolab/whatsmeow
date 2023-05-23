@@ -1,4 +1,4 @@
-module go.mau.fi/whatsmeow/mdtest
+module github.com/mojolab/whatsmeow/mojowa
 
 go 1.19
 
